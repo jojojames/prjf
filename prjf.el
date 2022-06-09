@@ -24,7 +24,7 @@ If this is nil, `prjf' will not work."
   :type 'function
   :group 'prjf)
 
-(defcustom prjf-recent-remove-regex ""
+(defcustom prjf-recent-keep-regex ".*"
   "Regex used to filter out `recentf' files."
   :type 'string
   :group 'prjf)
@@ -45,9 +45,9 @@ If this is nil, `prjf' will not work."
   :type 'list
   :group 'prjf)
 
-(defun prjf-recent-should-remove (recent)
+(defun prjf-recent-should-keep (recent)
   "Return whether or not this RECENT file should be removed."
-  (and (string-match-p prjf-recent-remove-regex recent)
+  (and (string-match-p prjf-recent-keep-regex recent)
        (file-exists-p recent)))
 
 (defun prjf-recent-directory (recent)
@@ -59,7 +59,7 @@ If this is nil, `prjf' will not work."
   (require 'recentf)
   (thread-last
     recentf-list
-    (cl-remove-if-not 'prjf-recent-should-remove)
+    (cl-remove-if-not 'prjf-recent-should-keep)
     (cl-mapcar 'prjf-recent-directory)
     (cl-remove-duplicates)))
 
