@@ -88,7 +88,6 @@ If this is nil, `prjf' will not work."
 (defun prjf-track-recent (&rest _args)
   "Update cache with new files."
   (let ((project (project-current)))
-
     (when (and buffer-file-name
                prjf-hash
                (gethash project prjf-hash))
@@ -97,7 +96,8 @@ If this is nil, `prjf' will not work."
         (require 'async)
         (async-start
          `(lambda ()
-            (funcall ,prjf-find-fn (list ,recent-dir)))
+            (let ((prjf-find-command ,prjf-find-command))
+              (funcall ',prjf-find-fn (list ,recent-dir))))
          (lambda (result)
            (let ((project-files (gethash project prjf-hash)))
              (setf (gethash project prjf-hash)
