@@ -10,7 +10,7 @@ Project is considered to be loaded if `project-files' has been called on it.")
 
 (defcustom prjf-is-project-fn
   #'always
-  "Function used to determine if `prjf' should take over handling `project-find-file'.
+  "Function used to determine if `prjf' should take over `project-find-file'.
 
 If this is nil, `prjf' will not work."
   :type `(choice
@@ -41,6 +41,7 @@ If this is nil, `prjf' will not work."
 
 (defcustom prjf-commands-to-track '(find-file
                                     switch-to-buffer)
+  "Commands to advise."
   :type 'list
   :group 'prjf)
 
@@ -66,8 +67,7 @@ If this is nil, `prjf' will not work."
   "Use `prjf-find-command' to find files in DIRS."
   (let ((command
          (format prjf-find-command
-                 (mapconcat #'shell-quote-argument dirs " ")))
-        res)
+                 (mapconcat #'shell-quote-argument dirs " "))))
     (with-temp-buffer
       (let ((status
              (process-file-shell-command command nil t))
@@ -120,7 +120,7 @@ If this is nil, `prjf' will not work."
   "Return directories for `project-current'."
   (list (project-root (project-current))))
 
-(cl-defmethod project-files :around ((project (head vc)) &optional dirs)
+(cl-defmethod project-files :around ((project (head vc)) &optional _dirs)
   (if (prjf-project-p)
       (if-let* ((hash prjf-hash)
                 ;; Hash could have been built elsewhere, only go down this route
@@ -170,6 +170,7 @@ If this is nil, `prjf' will not work."
 ;;;###autoload
 (define-minor-mode prjf-mode
   "Global minor mode for `prjf'."
+  :group 'prjf
   :global t
   (if prjf-mode
       (when prjf-track-new-files
