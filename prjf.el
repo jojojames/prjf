@@ -35,12 +35,11 @@ If this is nil, `prjf' will not work."
   :group 'prjf)
 
 (defcustom prjf-track-new-files t
-  "Whether or not to track `find-file' and `switch-to-buffer'."
+  "Whether or not to track `find-file'."
   :type 'boolean
   :group 'prjf)
 
-(defcustom prjf-commands-to-track '(find-file
-                                    switch-to-buffer)
+(defcustom prjf-commands-to-track '(find-file)
   "Commands to advise."
   :type 'list
   :group 'prjf)
@@ -106,6 +105,8 @@ If this is nil, `prjf' will not work."
           (let ((prjf-find-command ,prjf-find-command))
             (funcall ',prjf-find-fn (list ,recent-dir))))
        `(lambda (new-files)
+          (unless prjf-hash
+            (setf prjf-hash (make-hash-table :test 'equal)))
           (let* ((project ',(project-current))
                  (project-files (gethash project prjf-hash)))
             ;; If project is already loaded, we merge the two lists together.
@@ -126,7 +127,7 @@ If this is nil, `prjf' will not work."
                 ;; Hash could have been built elsewhere, only go down this route
                 ;; if we've ran down the else block and pushed project to
                 ;; `prjf-loaded-projects'.
-                (files (and (not (member project prjf-loaded-projects))
+                (files (and (member project prjf-loaded-projects)
                             (gethash project hash))))
           files
         (let* ((project-dirs (prjf-project-directories))
