@@ -14,16 +14,25 @@ If this is nil, `prjf' will not work."
           (function :tag "Custom function"))
   :group 'prjf)
 
-(defcustom prjf-project-directories-fn nil
-  "Function used to return directories `prjf' should find in.")
+(defcustom prjf-project-directories-fn 'prjf-default-project-directories
+  "Function used to return directories `prjf' should find in."
+  :type 'function
+  :group 'prjf)
 
 (defcustom prjf-recent-remove-regex ""
   "Regex used to filter out `recentf' files."
-  :type 'string)
+  :type 'string
+  :group 'prjf)
 
 (defcustom prjf-find-command "find -H %s -type f"
   "Command to call to gather project files."
-  :type 'string)
+  :type 'string
+  :group 'prjf)
+
+(defcustom prjf-track-new-files t
+  "Whether or not to track `find-file' and `switch-to-buffer'."
+  :type 'boolean
+  :group 'prjf)
 
 (defun prjf-recent-should-remove (recent)
   "Return whether or not this RECENT file should be removed."
@@ -44,6 +53,7 @@ If this is nil, `prjf' will not work."
     (cl-remove-duplicates)))
 
 (defun prjf-find-project-files (dirs)
+  "Use `prjf-find-command' to find files in DIRS."
   (let ((command
          (format prjf-find-command
                  (mapconcat #'shell-quote-argument dirs " ")))
@@ -77,21 +87,26 @@ If this is nil, `prjf' will not work."
 
 (defun prjf-track-recent (&rest _args)
   "Update cache with new files."
-  (when-let* (buffer-file-name
-              prjf-hash
-              (project (project-current))
-              (gethash project prjf-hash))
-    (let* ((recent-dir (prjf-recent-directory buffer-file-name))
-           (prjf-find-fn (symbol-function 'proj-find-project-files)))
-      (require 'async)
-      (async-start
-       `(lambda ()
-          (funcall ,prjf-find-fn (list ,recent-dir)))
-       (lambda (result)
-         (let ((project-files (gethash project prjf-hash)))
-           (setf (gethash project prjf-hash)
-                 (cl-remove-duplicates
-                  (append project-files result)))))))))
+  (let ((project (project-current)))
+
+    (when (and buffer-file-name
+               prjf-hash
+               (gethash project prjf-hash))
+      (let* ((recent-dir (prjf-recent-directory buffer-file-name))
+             (prjf-find-fn (symbol-function 'prjf-find-project-files)))
+        (require 'async)
+        (async-start
+         `(lambda ()
+            (funcall ,prjf-find-fn (list ,recent-dir)))
+         (lambda (result)
+           (let ((project-files (gethash project prjf-hash)))
+             (setf (gethash project prjf-hash)
+                   (cl-remove-duplicates
+                    (append project-files result))))))))))
+
+(defun prjf-default-project-directories ()
+  "Return directories for `project-current'."
+  (list (project-root (project-current))))
 
 (cl-defmethod project-files :around ((project (head vc)) &optional dirs)
   (if (prjf-project-p)
@@ -105,7 +120,7 @@ If this is nil, `prjf' will not work."
                                 (append project-dirs recent-dirs)))))
           (unless prjf-hash
             (setf prjf-hash (make-hash-table :test 'equal)))
-          (puthash project project-files)
+          (puthash project project-files prjf-hash)
           project-files))
     (cl-call-next-method)
     ;; (mapcan
@@ -134,11 +149,12 @@ If this is nil, `prjf' will not work."
   "Global minor mode for `prjf'."
   :global t
   (if prjf-mode
-      (progn
+      (when prjf-track-new-files
         (advice-add 'switch-to-buffer :after 'prjf-track-recent)
         (advice-add 'find-file :after 'prjf-track-recent))
-    (advice-remove 'switch-to-buffer 'prjf-track-recent)
-    (advice-remove 'find-file 'prjf-track-recent)))
+    (when prjf-track-new-files
+      (advice-remove 'switch-to-buffer 'prjf-track-recent)
+      (advice-remove 'find-file 'prjf-track-recent))))
 
 (provide 'prjf)
 ;;; prjf.el ends here
