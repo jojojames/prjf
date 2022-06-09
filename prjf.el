@@ -1,5 +1,7 @@
 ;;; prjf.el --- Magic `project-find-file'. -*- lexical-binding: t; -*-
 
+(eval-when-compile (require 'subr-x))
+
 (defvar prjf-hash nil
   "Hash table to store project files per project.")
 
