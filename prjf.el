@@ -1,7 +1,12 @@
 ;;; prjf.el --- Magic `project-find-file'. -*- lexical-binding: t; -*-
 
-(defvar-local prjf-hash nil
+(defvar prjf-hash nil
   "Hash table to store project files per project.")
+
+(defvar prjf-loaded-projects nil
+  "List tracking loaded projects.
+
+Project is considered to be loaded if `project-files' has been called on it.")
 
 (defcustom prjf-is-project-fn
   #'always
@@ -32,6 +37,11 @@ If this is nil, `prjf' will not work."
 (defcustom prjf-track-new-files t
   "Whether or not to track `find-file' and `switch-to-buffer'."
   :type 'boolean
+  :group 'prjf)
+
+(defcustom prjf-commands-to-track '(find-file
+                                    switch-to-buffer)
+  :type 'list
   :group 'prjf)
 
 (defun prjf-recent-should-remove (recent)
@@ -87,22 +97,24 @@ If this is nil, `prjf' will not work."
 
 (defun prjf-track-recent (&rest _args)
   "Update cache with new files."
-  (let ((project (project-current)))
-    (when (and buffer-file-name
-               prjf-hash
-               (gethash project prjf-hash))
-      (let* ((recent-dir (prjf-recent-directory buffer-file-name))
-             (prjf-find-fn (symbol-function 'prjf-find-project-files)))
-        (require 'async)
-        (async-start
-         `(lambda ()
-            (let ((prjf-find-command ,prjf-find-command))
-              (funcall ',prjf-find-fn (list ,recent-dir))))
-         (lambda (result)
-           (let ((project-files (gethash project prjf-hash)))
-             (setf (gethash project prjf-hash)
-                   (cl-remove-duplicates
-                    (append project-files result))))))))))
+  (when buffer-file-name
+    (let* ((recent-dir (prjf-recent-directory buffer-file-name))
+           (prjf-find-fn (symbol-function 'prjf-find-project-files)))
+      (require 'async)
+      (async-start
+       `(lambda ()
+          (let ((prjf-find-command ,prjf-find-command))
+            (funcall ',prjf-find-fn (list ,recent-dir))))
+       `(lambda (new-files)
+          (let* ((project ',(project-current))
+                 (project-files (gethash project prjf-hash)))
+            ;; If project is already loaded, we merge the two lists together.
+            ;; If project hasn't been loaded, set it to the hash table.
+            (if (member project prjf-loaded-projects)
+                (setf (gethash project prjf-hash)
+                      (cl-remove-duplicates
+                       (append project-files new-files)))
+              (puthash project new-files prjf-hash))))))))
 
 (defun prjf-default-project-directories ()
   "Return directories for `project-current'."
@@ -111,7 +123,11 @@ If this is nil, `prjf' will not work."
 (cl-defmethod project-files :around ((project (head vc)) &optional dirs)
   (if (prjf-project-p)
       (if-let* ((hash prjf-hash)
-                (files (gethash project hash)))
+                ;; Hash could have been built elsewhere, only go down this route
+                ;; if we've ran down the else block and pushed project to
+                ;; `prjf-loaded-projects'.
+                (files (and (not (member project prjf-loaded-projects))
+                            (gethash project hash))))
           files
         (let* ((project-dirs (prjf-project-directories))
                (recent-dirs (prjf-recent-directories))
@@ -120,7 +136,14 @@ If this is nil, `prjf' will not work."
                                 (append project-dirs recent-dirs)))))
           (unless prjf-hash
             (setf prjf-hash (make-hash-table :test 'equal)))
-          (puthash project project-files prjf-hash)
+
+          (if (member project prjf-loaded-projects)
+              (setf (gethash project prjf-hash)
+                    (cl-remove-duplicates
+                     (append project-files (gethash project prjf-hash))))
+            (push project prjf-loaded-projects)
+            (puthash project project-files prjf-hash))
+
           project-files))
     (cl-call-next-method)
     ;; (mapcan
@@ -150,11 +173,11 @@ If this is nil, `prjf' will not work."
   :global t
   (if prjf-mode
       (when prjf-track-new-files
-        (advice-add 'switch-to-buffer :after 'prjf-track-recent)
-        (advice-add 'find-file :after 'prjf-track-recent))
+        (cl-loop for fn in prjf-commands-to-track
+                 do (advice-add fn :after 'prjf-track-recent)))
     (when prjf-track-new-files
-      (advice-remove 'switch-to-buffer 'prjf-track-recent)
-      (advice-remove 'find-file 'prjf-track-recent))))
+      (cl-loop for fn in prjf-commands-to-track
+               do (advice-remove fn 'prjf-track-recent)))))
 
 (provide 'prjf)
 ;;; prjf.el ends here
