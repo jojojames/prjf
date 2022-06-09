@@ -175,13 +175,14 @@ If this is nil, `prjf' will not work."
   "Global minor mode for `prjf'."
   :group 'prjf
   :global t
-  (if prjf-mode
-      (when prjf-track-new-files
-        (cl-loop for fn in prjf-commands-to-track
-                 do (advice-add fn :after 'prjf-track-recent)))
-    (when prjf-track-new-files
-      (cl-loop for fn in prjf-commands-to-track
-               do (advice-remove fn 'prjf-track-recent)))))
+  ;; (if prjf-mode
+  ;;     (when prjf-track-new-files
+  ;;       (cl-loop for fn in prjf-commands-to-track
+  ;;                do (advice-add fn :after 'prjf-track-recent)))
+  ;;   (when prjf-track-new-files
+  ;;     (cl-loop for fn in prjf-commands-to-track
+  ;;              do (advice-remove fn 'prjf-track-recent))))
+  )
 
 (provide 'prjf)
 ;;; prjf.el ends here
