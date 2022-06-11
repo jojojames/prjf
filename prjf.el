@@ -130,13 +130,13 @@ If this is nil, `prjf' will not work."
   "Return directories for `project-current'."
   (list (project-root (project-current))))
 
-(defun prjf-how-many-str (regexp str)
-  "Return how many times REGEXP occurs in STR."
-  (cl-loop with start = 0
-           for count from 0
-           while (string-match regexp str start)
-           do (setq start (match-end 0))
-           finally return count))
+(defun prjf-count-char-in-string (c str)
+  "Count number of C in STR."
+  (if (and (char-or-string-p c)
+           (char-or-string-p str))
+      (let ((c (if (characterp c) c (string-to-char c))))
+        (cl-count c (string-to-list str)))
+    (error "Verification failed.")))
 
 (cl-defmethod project-files :around ((project (head vc)) &optional _dirs)
   (if (prjf-project-p)
