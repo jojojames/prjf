@@ -26,6 +26,11 @@ If this is nil, `prjf' will not work."
   :type 'function
   :group 'prjf)
 
+(defcustom prjf-recent-keep-fn 'prjf-recent-should-keep
+  "Function used as predicate on whether or not to keep recent file."
+  :type 'function
+  :group 'prjf)
+
 (defcustom prjf-recent-keep-regex ".*"
   "Regex used to filter out `recentf' files."
   :type 'string
@@ -61,7 +66,7 @@ If this is nil, `prjf' will not work."
   (cl-remove-duplicates
    (thread-last
      recentf-list
-     (cl-remove-if-not 'prjf-recent-should-keep)
+     (cl-remove-if-not prjf-recent-keep-fn)
      (cl-mapcar 'prjf-recent-directory))
    :test 'equal))
 
@@ -124,6 +129,14 @@ If this is nil, `prjf' will not work."
 (defun prjf-default-project-directories ()
   "Return directories for `project-current'."
   (list (project-root (project-current))))
+
+(defun prjf-how-many-str (regexp str)
+  "Return how many times REGEXP occurs in STR."
+  (cl-loop with start = 0
+           for count from 0
+           while (string-match regexp str start)
+           do (setq start (match-end 0))
+           finally return count))
 
 (cl-defmethod project-files :around ((project (head vc)) &optional _dirs)
   (if (prjf-project-p)
