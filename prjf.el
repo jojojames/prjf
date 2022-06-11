@@ -58,11 +58,12 @@ If this is nil, `prjf' will not work."
 (defun prjf-recent-directories ()
   "Return recent directories used."
   (require 'recentf)
-  (thread-last
-    recentf-list
-    (cl-remove-if-not 'prjf-recent-should-keep)
-    (cl-mapcar 'prjf-recent-directory)
-    (cl-remove-duplicates)))
+  (cl-remove-duplicates
+   (thread-last
+     recentf-list
+     (cl-remove-if-not 'prjf-recent-should-keep)
+     (cl-mapcar 'prjf-recent-directory))
+   :test 'equal))
 
 (defun prjf-find-project-files (dirs)
   "Use `prjf-find-command' to find files in DIRS."
@@ -116,7 +117,8 @@ If this is nil, `prjf' will not work."
             (if (member project prjf-loaded-projects)
                 (setf (gethash project prjf-hash)
                       (cl-remove-duplicates
-                       (append project-files new-files)))
+                       (append project-files new-files)
+                       :test 'equal))
               (puthash project new-files prjf-hash))))))))
 
 (defun prjf-default-project-directories ()
@@ -136,14 +138,16 @@ If this is nil, `prjf' will not work."
                (recent-dirs (prjf-recent-directories))
                (project-files (prjf-find-project-files
                                (cl-remove-duplicates
-                                (append project-dirs recent-dirs)))))
+                                (append project-dirs recent-dirs)
+                                :test 'equal))))
           (unless prjf-hash
             (setf prjf-hash (make-hash-table :test 'equal)))
 
           (if (member project prjf-loaded-projects)
               (setf (gethash project prjf-hash)
                     (cl-remove-duplicates
-                     (append project-files (gethash project prjf-hash))))
+                     (append project-files (gethash project prjf-hash))
+                     :test 'equal))
             (push project prjf-loaded-projects)
             (puthash project project-files prjf-hash))
 
