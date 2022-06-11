@@ -21,8 +21,18 @@ If this is nil, `prjf' will not work."
           (function :tag "Custom function"))
   :group 'prjf)
 
-(defcustom prjf-project-directories-fn 'prjf-default-project-directories
+(defcustom prjf-build-find-command-fn 'prjf-build-find-command
+  "Function used to build find command."
+  :type 'function
+  :group 'prjf)
+
+(defcustom prjf-project-directories-fn 'prjf-find-project-directories
   "Function used to return directories `prjf' should find in."
+  :type 'function
+  :group 'prjf)
+
+(defcustom prjf-project-ignores-fn 'prjf-find-ignores
+  "Functioned used to return directories `prjf' should ignore during find. "
   :type 'function
   :group 'prjf)
 
@@ -33,11 +43,6 @@ If this is nil, `prjf' will not work."
 
 (defcustom prjf-recent-keep-regex ".*"
   "Regex used to filter out `recentf' files."
-  :type 'string
-  :group 'prjf)
-
-(defcustom prjf-find-command "find -H %s -type f"
-  "Command to call to gather project files."
   :type 'string
   :group 'prjf)
 
@@ -60,21 +65,16 @@ If this is nil, `prjf' will not work."
   "Return directory of RECENT."
   (file-name-directory recent))
 
-(defun prjf-recent-directories ()
-  "Return recent directories used."
-  (require 'recentf)
-  (cl-remove-duplicates
-   (thread-last
-     recentf-list
-     (cl-remove-if-not prjf-recent-keep-fn)
-     (cl-mapcar 'prjf-recent-directory))
-   :test 'equal))
+(defun prjf-build-find-command (dirs _ignores)
+  "Return find command."
+  (format
+   "find -H %s -type f"
+   (mapconcat #'shell-quote-argument dirs " ")))
 
-(defun prjf-find-project-files (dirs)
-  "Use `prjf-find-command' to find files in DIRS."
-  (let ((command
-         (format prjf-find-command
-                 (mapconcat #'shell-quote-argument dirs " "))))
+(defun prjf-find-project-files (dirs &optional ignores)
+  "Use `prjf-build-find-command-fn' to find files in DIRS."
+  (let ((command (funcall prjf-build-find-command-fn dirs ignores)))
+    ;; (message command)
     (with-temp-buffer
       (let ((status
              (process-file-shell-command command nil t))
@@ -92,10 +92,6 @@ If this is nil, `prjf' will not work."
         (goto-char pt)
         (split-string (buffer-string) nil t)))))
 
-(defun prjf-project-directories ()
-  "Wrapper around `prjf-project-directories-fn'."
-  (funcall prjf-project-directories-fn))
-
 (defun prjf-project-p ()
   "Return whether or not `prjf' is handling `project-find-file'."
   (and
@@ -110,7 +106,7 @@ If this is nil, `prjf' will not work."
       (require 'async)
       (async-start
        `(lambda ()
-          (let ((prjf-find-command ,prjf-find-command))
+          (let ((prjf-build-find-command-fn ,prjf-build-find-command-fn))
             (funcall ',prjf-find-fn (list ,recent-dir))))
        `(lambda (new-files)
           (unless prjf-hash
@@ -126,9 +122,15 @@ If this is nil, `prjf' will not work."
                        :test 'equal))
               (puthash project new-files prjf-hash))))))))
 
-(defun prjf-default-project-directories ()
+(defun prjf-find-project-directories ()
   "Return directories for `project-current'."
   (list (project-root (project-current))))
+
+(defun prjf-find-ignores ()
+  "Return directories to ignore for `project-current'."
+  (mapcar (lambda (dir)
+            (project--value-in-dir 'project-vc-ignores dir))
+          (funcall prjf-project-directories-fn)))
 
 (defun prjf-count-char-in-string (c str)
   "Count number of C in STR."
@@ -140,31 +142,39 @@ If this is nil, `prjf' will not work."
 
 (cl-defmethod project-files :around ((project (head vc)) &optional _dirs)
   (if (prjf-project-p)
-      (if-let* ((hash prjf-hash)
-                ;; Hash could have been built elsewhere, only go down this route
-                ;; if we've ran down the else block and pushed project to
-                ;; `prjf-loaded-projects'.
-                (files (and (member project prjf-loaded-projects)
-                            (gethash project hash))))
-          files
-        (let* ((project-dirs (prjf-project-directories))
-               (recent-dirs (prjf-recent-directories))
-               (project-files (prjf-find-project-files
-                               (cl-remove-duplicates
-                                (append project-dirs recent-dirs)
-                                :test 'equal))))
-          (unless prjf-hash
-            (setf prjf-hash (make-hash-table :test 'equal)))
+      (require 'recentf)
+    (if-let* ((hash prjf-hash)
+              ;; Hash could have been built elsewhere, only go down this route
+              ;; if we've ran down the else block and pushed project to
+              ;; `prjf-loaded-projects'.
+              (files (and (member project prjf-loaded-projects)
+                          (gethash project hash))))
+        files
+      (let* ((project-dirs (funcall prjf-project-directories-fn))
+             (ignore-dirs (funcall prjf-project-ignores-fn))
+             (recent-dirs (cl-remove-duplicates
+                           (thread-last
+                             recentf-list
+                             (cl-remove-if-not prjf-recent-keep-fn)
+                             (cl-mapcar 'prjf-recent-directory))
+                           :test 'equal))
+             (project-files (prjf-find-project-files
+                             (cl-remove-duplicates
+                              (append project-dirs recent-dirs)
+                              :test 'equal)
+                             ignore-dirs)))
+        (unless prjf-hash
+          (setf prjf-hash (make-hash-table :test 'equal)))
 
-          (if (member project prjf-loaded-projects)
-              (setf (gethash project prjf-hash)
-                    (cl-remove-duplicates
-                     (append project-files (gethash project prjf-hash))
-                     :test 'equal))
-            (push project prjf-loaded-projects)
-            (puthash project project-files prjf-hash))
+        (if (member project prjf-loaded-projects)
+            (setf (gethash project prjf-hash)
+                  (cl-remove-duplicates
+                   (append project-files (gethash project prjf-hash))
+                   :test 'equal))
+          (push project prjf-loaded-projects)
+          (puthash project project-files prjf-hash))
 
-          project-files))
+        project-files))
     (cl-call-next-method)
     ;; (mapcan
     ;;  (lambda (dir)
