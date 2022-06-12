@@ -141,40 +141,40 @@ If this is nil, `prjf' will not work."
     (error "Verification failed.")))
 
 (cl-defmethod project-files :around ((project (head vc)) &optional _dirs)
+  (require 'recentf)
   (if (prjf-project-p)
-      (require 'recentf)
-    (if-let* ((hash prjf-hash)
-              ;; Hash could have been built elsewhere, only go down this route
-              ;; if we've ran down the else block and pushed project to
-              ;; `prjf-loaded-projects'.
-              (files (and (member project prjf-loaded-projects)
-                          (gethash project hash))))
-        files
-      (let* ((project-dirs (funcall prjf-project-directories-fn))
-             (ignore-dirs (funcall prjf-project-ignores-fn))
-             (recent-dirs (cl-remove-duplicates
-                           (thread-last
-                             recentf-list
-                             (cl-remove-if-not prjf-recent-keep-fn)
-                             (cl-mapcar 'prjf-recent-directory))
-                           :test 'equal))
-             (project-files (prjf-find-project-files
-                             (cl-remove-duplicates
-                              (append project-dirs recent-dirs)
-                              :test 'equal)
-                             ignore-dirs)))
-        (unless prjf-hash
-          (setf prjf-hash (make-hash-table :test 'equal)))
+      (if-let* ((hash prjf-hash)
+                ;; Hash could have been built elsewhere, only go down this route
+                ;; if we've ran down the else block and pushed project to
+                ;; `prjf-loaded-projects'.
+                (files (and (member project prjf-loaded-projects)
+                            (gethash project hash))))
+          files
+        (let* ((project-dirs (funcall prjf-project-directories-fn))
+               (ignore-dirs (funcall prjf-project-ignores-fn))
+               (recent-dirs (cl-remove-duplicates
+                             (thread-last
+                               recentf-list
+                               (cl-remove-if-not prjf-recent-keep-fn)
+                               (cl-mapcar 'prjf-recent-directory))
+                             :test 'equal))
+               (project-files (prjf-find-project-files
+                               (cl-remove-duplicates
+                                (append project-dirs recent-dirs)
+                                :test 'equal)
+                               ignore-dirs)))
+          (unless prjf-hash
+            (setf prjf-hash (make-hash-table :test 'equal)))
 
-        (if (member project prjf-loaded-projects)
-            (setf (gethash project prjf-hash)
-                  (cl-remove-duplicates
-                   (append project-files (gethash project prjf-hash))
-                   :test 'equal))
-          (push project prjf-loaded-projects)
-          (puthash project project-files prjf-hash))
+          (if (member project prjf-loaded-projects)
+              (setf (gethash project prjf-hash)
+                    (cl-remove-duplicates
+                     (append project-files (gethash project prjf-hash))
+                     :test 'equal))
+            (push project prjf-loaded-projects)
+            (puthash project project-files prjf-hash))
 
-        project-files))
+          project-files))
     (cl-call-next-method)
     ;; (mapcan
     ;;  (lambda (dir)
