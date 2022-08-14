@@ -36,16 +36,6 @@ If this is nil, `prjf' will not work."
   :type 'function
   :group 'prjf)
 
-(defcustom prjf-recent-keep-fn 'prjf-recent-should-keep
-  "Function used as predicate on whether or not to keep recent file."
-  :type 'function
-  :group 'prjf)
-
-(defcustom prjf-recent-keep-regex ".*"
-  "Regex used to filter out `recentf' files."
-  :type 'string
-  :group 'prjf)
-
 (defcustom prjf-track-new-files t
   "Whether or not to track `find-file'."
   :type 'boolean
@@ -55,15 +45,6 @@ If this is nil, `prjf' will not work."
   "Commands to advise."
   :type 'list
   :group 'prjf)
-
-(defun prjf-recent-should-keep (recent)
-  "Return whether or not this RECENT file should be removed."
-  (and (string-match-p prjf-recent-keep-regex recent)
-       (file-exists-p recent)))
-
-(defun prjf-recent-directory (recent)
-  "Return directory of RECENT."
-  (file-name-directory recent))
 
 (defun prjf-build-find-command (dirs _ignores)
   "Return find command."
@@ -98,30 +79,6 @@ If this is nil, `prjf' will not work."
    prjf-mode
    (funcall prjf-is-project-fn)))
 
-(defun prjf-track-recent (&rest _args)
-  "Update cache with new files."
-  (when buffer-file-name
-    (let* ((recent-dir (prjf-recent-directory buffer-file-name))
-           (prjf-find-fn (symbol-function 'prjf-find-project-files)))
-      (require 'async)
-      (async-start
-       `(lambda ()
-          (let ((prjf-build-find-command-fn ,prjf-build-find-command-fn))
-            (funcall ',prjf-find-fn (list ,recent-dir))))
-       `(lambda (new-files)
-          (unless prjf-hash
-            (setf prjf-hash (make-hash-table :test 'equal)))
-          (let* ((project ',(project-current))
-                 (project-files (gethash project prjf-hash)))
-            ;; If project is already loaded, we merge the two lists together.
-            ;; If project hasn't been loaded, set it to the hash table.
-            (if (member project prjf-loaded-projects)
-                (setf (gethash project prjf-hash)
-                      (cl-remove-duplicates
-                       (append project-files new-files)
-                       :test 'equal))
-              (puthash project new-files prjf-hash))))))))
-
 (defun prjf-find-project-directories ()
   "Return directories for `project-current'."
   (list (project-root (project-current))))
@@ -141,7 +98,6 @@ If this is nil, `prjf' will not work."
     (error "Verification failed.")))
 
 (cl-defmethod project-files :around ((project (head vc)) &optional _dirs)
-  (require 'recentf)
   (if (prjf-project-p)
       (if-let* ((hash prjf-hash)
                 ;; Hash could have been built elsewhere, only go down this route
@@ -152,15 +108,9 @@ If this is nil, `prjf' will not work."
           files
         (let* ((project-dirs (funcall prjf-project-directories-fn))
                (ignore-dirs (funcall prjf-project-ignores-fn))
-               (recent-dirs (cl-remove-duplicates
-                             (thread-last
-                               recentf-list
-                               (cl-remove-if-not prjf-recent-keep-fn)
-                               (cl-mapcar 'prjf-recent-directory))
-                             :test 'equal))
                (project-files (prjf-find-project-files
                                (cl-remove-duplicates
-                                (append project-dirs recent-dirs)
+                                project-dirs
                                 :test 'equal)
                                ignore-dirs)))
           (unless prjf-hash
@@ -201,15 +151,7 @@ If this is nil, `prjf' will not work."
 (define-minor-mode prjf-mode
   "Global minor mode for `prjf'."
   :group 'prjf
-  :global t
-  ;; (if prjf-mode
-  ;;     (when prjf-track-new-files
-  ;;       (cl-loop for fn in prjf-commands-to-track
-  ;;                do (advice-add fn :after 'prjf-track-recent)))
-  ;;   (when prjf-track-new-files
-  ;;     (cl-loop for fn in prjf-commands-to-track
-  ;;              do (advice-remove fn 'prjf-track-recent))))
-  )
+  :global t)
 
 (provide 'prjf)
 ;;; prjf.el ends here
